@@ -1,0 +1,141 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OB Sentinel Scanner</title>
+<style>
+body{margin:0;background:#0b1020;color:#edf3ff;font:15px system-ui;padding:18px}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+h1{font-size:25px;color:#66e5bd}
+button,select{padding:12px;border-radius:10px;border:1px solid #30415e;background:#17223a;color:white;margin:5px 0}
+button{background:#66e5bd;color:#07151a;font-weight:bold}
+.card{background:#121a2d;border:1px solid #30415e;border-radius:14px;padding:15px;margin:12px 0}
+small,p{color:#9eafce}
+.metric{font-size:24px;font-weight:bold}
+.zone{padding:12px;border-bottom:1px solid #30415e}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>OB SENTINEL</h1>
+    <small>Original Order Block Scanner · 5 min</small>
+  </div>
+  <button id="connect">Connect Upstox</button>
+</header>
+
+<div class="card">
+  <h3>Select Market</h3>
+  <select id="market">
+    <option value="NSE_INDEX|Nifty 50">Nifty 50</option>
+    <option value="NSE_INDEX|Nifty Bank">Bank Nifty</option>
+    <option value="NSE_EQ|INE002A01018">Reliance</option>
+    <option value="NSE_EQ|INE040A01034">HDFC Bank</option>
+    <option value="NSE_EQ|INE090A01021">ICICI Bank</option>
+    <option value="NSE_EQ|INE062A01020">SBI</option>
+    <option value="NSE_EQ|INE009A01021">Infosys</option>
+    <option value="NSE_EQ|INE467B01029">TCS</option>
+  </select>
+  <br>
+  <button id="scan">Run Live Scan</button>
+  <p id="status">Connect Upstox to load real market candles.</p>
+</div>
+
+<div class="card">
+  <small>Latest candle close</small>
+  <div class="metric" id="price">—</div>
+  <small>5-minute candles returned</small>
+  <div class="metric" id="count">—</div>
+</div>
+
+<div class="card">
+  <h3>Order Block Candidates</h3>
+  <div id="zones">No scan performed yet.</div>
+</div>
+
+<div class="card">
+  <h3>Liquidity Zones</h3>
+  <div id="liquidity">No candle data loaded.</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+$("connect").onclick = () => {
+  location.href = "/api/upstox-login";
+};
+
+$("scan").onclick = async () => {
+  let token = sessionStorage.getItem("ob_upstox_access_token");
+
+  if (!token) {
+    $("status").textContent = "Connect Upstox first.";
+    return;
+  }
+
+  $("status").textContent = "Fetching real Upstox candles...";
+  $("scan").disabled = true;
+
+  try {
+    const response = await fetch("/api/scan", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      body: JSON.stringify({
+        instrument_key: $("market").value
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "API error " + response.status);
+    }
+
+    const candles = data.candles || [];
+    $("price").textContent = candles.length
+      ? candles[candles.length - 1].close.toLocaleString("en-IN")
+      : "—";
+    $("count").textContent = candles.length;
+
+    const zones = data.zones || [];
+    $("zones").innerHTML = "";
+
+    if (!zones.length) {
+      $("zones").textContent =
+        "No order block candidates returned. No fake signals shown.";
+    }
+
+    zones.forEach(z => {
+      const div = document.createElement("div");
+      div.className = "zone";
+      div.textContent =
+        z.type + " · " + z.low + " – " + z.high;
+      $("zones").appendChild(div);
+    });
+
+    if (candles.length) {
+      const recent = candles.slice(-20);
+      const high = Math.max(...recent.map(c => c.high));
+      const low = Math.min(...recent.map(c => c.low));
+
+      $("liquidity").textContent =
+        "Recent high: " + high + " | Recent low: " + low;
+    }
+
+    $("status").textContent =
+      "Upstox response received. Source: " + data.source;
+  } catch (error) {
+    $("status").textContent =
+      error.message + ". No demo data used.";
+  } finally {
+    $("scan").disabled = false;
+  }
+};
+</script>
+</body>
+</html>
